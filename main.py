@@ -28,7 +28,6 @@ def make_dictionary(df, na_valuestr="-1"):
 
             if vocab_dict[word] != 0:
                 tmp_train_x.append(vocab_dict[word])
-                train_x.append(vocab_dict[word])
             else:
                 break
 
@@ -135,11 +134,16 @@ def generate_xy(lines, vocab, time_step=2, train_rate = 0.8):
     for line in lines:
         for index in range(0, len(line)-time_step):# char in lines
             substr = line[index:index+time_step]
+
+            x_intlist = [0] * len(substr)
+            for i, c in enumerate(substr):
+                x_intlist[i] = vocab[c]
+
             y_char = line[index+time_step]
             print(y_char)
             y_buf = np.zeros(len(vocab))
             y_buf[vocab[y_char]] = 1
-            x.append(substr)
+            x.append(x_intlist)
             y.append(y_buf)
 
     train_x, train_y = x[:int(len(x)*train_rate)], y[:int(len(x)*train_rate)]
@@ -154,14 +158,14 @@ def generate_train_xy(data, vocab, time_step=2):
         tx.append(np.array(data[i:i+time_step]))
         tmp_y = np.zeros(len(vocab))
         tmp_y[data[i+time_step]] = 1
-        #ty.append(data[i+time_step])
+        # ty.append(data[i+time_step])
         ty.append(tmp_y)
     return tx, ty
 
 
 def char_lstm(filename):
     BATCH_SIZE = 80
-    TIME_STEPS = 24
+    TIME_STEPS = 6
     hidden_neurons = 256 #1024
     input_dim = 1
     EPOCH=80
@@ -175,11 +179,17 @@ def char_lstm(filename):
     for line in readlines:
         strlist.append(line)
 
-    dict, reverse_dict = make_char_dictionary(strlist)
+    vocab, reverse_dict = make_char_dictionary(strlist)
 
     # train_x, train_y, test_x, test_yの作成
-    train_x, train_y, test_x, test_y = generate_xy(strlist, dict, time_step=8, train_rate=0.7)
+    train_x, train_y, test_x, test_y = generate_xy(strlist, vocab, time_step=TIME_STEPS, train_rate=0.7)
+    train_x = np.array(train_x)
+    train_y = np.array(train_y)
+    test_x = np.array(test_x)
+    test_y = np.array(test_y)
+    train_x = np.reshape(train_x, (train_x.shape[0], train_x.shape[1], 1))
 
+    '''
     print("***** generated trainx, trainy, testx, testy ******")
 
     print("train_x: ", train_x)
@@ -188,6 +198,27 @@ def char_lstm(filename):
     print("test_y: ", test_y)
 
     print("*******************")
+    '''
+
+    model = Sequential()
+    model.add(LSTM(hidden_neurons, batch_input_shape=(None, TIME_STEPS, input_dim), return_sequences=False))
+    # model.add(Dense(output_neurons))
+    model.add(Dense(256))
+    model.add(Activation('relu'))
+    model.add(Dropout(0.2))
+    model.add(Dense(128))
+    model.add(Dropout(0.1))
+    model.add(Dense(len(vocab)))
+    model.add(Activation('softmax'))
+    model.compile(loss='categorical_crossentropy',
+                  optimizer='adadelta', metrics=['accuracy'])
+    model.fit(train_x, train_y, batch_size=BATCH_SIZE,
+              nb_epoch=EPOCH, verbose=1)
+
+
+    json_dict = model.to_json()
+    output_f = open('model.json', 'w')
+    json.dump(json_dict, output_f)
 
 
 def string_lstm(csvfilename):

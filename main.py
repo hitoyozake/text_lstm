@@ -9,51 +9,64 @@ import pandas as pd
 from keras.layers.core import Dropout, Activation, Flatten, Dense
 import json
 
-'''亜流'''
-def make_train_data_with_phrase(filename):
-    clm_name = []
-    MAX_CLM = 1000
-    for i in range(MAX_CLM):
-        clm_name.append(i)
+def make_dictionary(df, na_valuestr="-1"):
+    vocab_dict = {na_valuestr: 0}
+    vocab_str_dict = {0: na_valuestr}
 
-    print(clm_name)
+    dict_index = 1
 
-    df = pd.read_csv(filename, delimiter=' ', header=None, names=clm_name)
-    df = df.fillna('-1')
-    print('****** input data is *******')
-    print(df)
-    print('****************************')
-
-    vocab_dict = {"-1":-500000}
-    dict_index = 0
-
-    train_x = []
-    train_y = []
-
+    # 辞書を作成する
     for i, row in df.iterrows():
-        print(i)
-        print(row)
-        x = []
-
+        print(i, ": ", row)
+        tmp_train_x = []
         for word in row:
-            if not word in vocab_dict: # キーを持っているか調べる
-                vocab_dict[word] = dict_index # len(vocab_dict)
+            if word not in vocab_dict: # キーを持っているか調べる
+                vocab_dict[word] = len(vocab_dict)
+                vocab_str_dict[vocab_dict[word]] = word # reverseしてkey: val => word のディクショナリも作成する
                 print('key added :', word, ', value :', dict_index)
                 dict_index += 1
-            x.append(vocab_dict[word])
-            train_x.append(x[:])
 
-        '''
-        for index in range(len(train_x)-1):
-            train_y.append(train_x[index+1])
-        '''
+            if vocab_dict[word] != 0:
+                tmp_train_x.append(vocab_dict[word])
+                train_x.append(vocab_dict[word])
+            else:
+                break
 
-        print("********************")
-        print("result:")
-        print(train_y)
-        print("*******************")
+    return vocab_dict, vocab_str_dict
 
-    return (vocab_dict, train_x, train_y)
+
+def add_char_to_dictionary(target_str, vocab_dict):
+
+    dict_index = len(vocab_dict)
+
+    vocab_reverse_dict = {}
+
+    # 辞書を作成する
+    for c in target_str:
+            if c not in vocab_dict: # キーを持っているか調べる
+                vocab_dict[c] = len(vocab_dict)
+                vocab_reverse_dict[vocab_dict[c]] = c#reverseしてkey: val => word のディクショナリも作成する
+                print('key added :', c, ', value :', dict_index)
+                dict_index += 1
+
+            # if vocab_dict[c] != 0:
+            #    tmp_train_x.append(vocab_dict[word])
+            #    train_x.append(vocab_dict[word])
+            # else:
+            #    break
+
+    return vocab_dict, vocab_reverse_dict
+
+
+def make_char_dictionary(strlist):
+
+    dict_index = 1
+    vocab_dict = {}
+    for s in strlist:
+        vocab_dict, rev_dict = add_char_to_dictionary(s, vocab_dict)
+
+    return vocab_dict, rev_dict
+
 
 
 # wordベースでtrainと正解データを作成する
@@ -78,6 +91,7 @@ def make_train_data(filename):
     train_x = []
     train_y = []
 
+    # 辞書を作成する
     for i, row in df.iterrows():
         print( i, ": ", row)
         tmp_train_x = []
@@ -114,6 +128,26 @@ def make_train_data(filename):
 def lstm(data, dict):
     print("lstm func")
 
+
+def generate_xy(lines, vocab, time_step=2, train_rate = 0.8):
+
+    x, y = [], []
+    for line in lines:
+        for index in range(0, len(line)-time_step):# char in lines
+            substr = line[index:index+time_step]
+            y_char = line[index+time_step]
+            print(y_char)
+            y_buf = np.zeros(len(vocab))
+            y_buf[vocab[y_char]] = 1
+            x.append(substr)
+            y.append(y_buf)
+
+    train_x, train_y = x[:int(len(x)*train_rate)], y[:int(len(x)*train_rate)]
+    test_x, test_y = x[int(len(x)*train_rate):], y[int(len(x)*train_rate):]
+
+    return train_x, train_y, test_x, test_y
+
+
 def generate_train_xy(data, vocab, time_step=2):
     tx, ty = [], []
     for i in range(len(data)-time_step):
@@ -123,49 +157,91 @@ def generate_train_xy(data, vocab, time_step=2):
         #ty.append(data[i+time_step])
         ty.append(tmp_y)
     return tx, ty
-train_x, train_y, vocab, vocab_reverse = make_train_data('test.csv')
 
-print(train_x)
-BATCH_SIZE = 80
-TIME_STEPS = 4
-hidden_neurons = 1024 #1024
-input_dim = 1
-output_neurons = len(vocab)
 
-train_x, train_y = generate_train_xy(train_x, vocab, TIME_STEPS)
-train_x = np.array(train_x)
-train_y = np.array(train_y)
-# print(train_x)
-print(train_x.shape)
-train_x = np.reshape(train_x, (train_x.shape[0], train_x.shape[1], 1))
-# e(train_x, (train_x.shape[0], train_x.shape[1], 1))
+def char_lstm(filename):
+    BATCH_SIZE = 80
+    TIME_STEPS = 24
+    hidden_neurons = 256 #1024
+    input_dim = 1
+    EPOCH=80
 
-EPOCH = 600
+    inputfile = open(filename, mode='r')
 
-model = Sequential()
-model.add(LSTM(hidden_neurons, batch_input_shape=(None, TIME_STEPS, input_dim), return_sequences=False))
-#model.add(Dense(output_neurons))
-model.add(Dense(2048))
-model.add(Activation('relu'))
-model.add(Dropout(0.2))
-model.add(Dense(4096))
-model.add(Dropout(0.1))
-model.add(Dense(len(vocab)))
-model.add(Activation('softmax'))
-model.compile(loss='categorical_crossentropy',
-              optimizer='adadelta', metrics=['accuracy'])
-model.fit(train_x, train_y, batch_size=BATCH_SIZE,
-          nb_epoch=EPOCH, verbose=1)
 
-json_dict = model.to_json()
-output_f = open('model.json', 'w')
-json.dump(json_dict, output_f)
+    strlist = []
+    readlines = inputfile.readlines()
 
-print(vocab_reverse)
-dic_file = open('dict.json', 'w')
-json.dump(vocab_reverse,dic_file)
+    for line in readlines:
+        strlist.append(line)
 
-model.save_weights('weights.h5')
+    dict, reverse_dict = make_char_dictionary(strlist)
 
-from tensorflow.contrib.keras.python.keras import backend as K
-K.clear_session()
+    # train_x, train_y, test_x, test_yの作成
+    train_x, train_y, test_x, test_y = generate_xy(strlist, dict, time_step=8, train_rate=0.7)
+
+    print("***** generated trainx, trainy, testx, testy ******")
+
+    print("train_x: ", train_x)
+    print("train_y: ", train_y)
+    print("test_x: ", test_x)
+    print("test_y: ", test_y)
+
+    print("*******************")
+
+
+def string_lstm(csvfilename):
+    train_x, train_y, vocab, vocab_reverse = make_train_data(csvfilename)
+
+    print(train_x)
+    BATCH_SIZE = 80
+    TIME_STEPS = 4
+    EPOCH = 600
+
+    hidden_neurons = 1024 #1024
+    input_dim = 1
+    output_neurons = len(vocab)
+
+    train_x, train_y = generate_train_xy(train_x, vocab, TIME_STEPS)
+    train_x = np.array(train_x)
+    train_y = np.array(train_y)
+    # print(train_x)
+    print(train_x.shape)
+    train_x = np.reshape(train_x, (train_x.shape[0], train_x.shape[1], 1))
+    # e(train_x, (train_x.shape[0], train_x.shape[1], 1))
+
+
+    model = Sequential()
+    model.add(LSTM(hidden_neurons, batch_input_shape=(None, TIME_STEPS, input_dim), return_sequences=False))
+    # model.add(Dense(output_neurons))
+    model.add(Dense(2048))
+    model.add(Activation('relu'))
+    model.add(Dropout(0.2))
+    model.add(Dense(4096))
+    model.add(Dropout(0.1))
+    model.add(Dense(len(vocab)))
+    model.add(Activation('softmax'))
+    model.compile(loss='categorical_crossentropy',
+                  optimizer='adadelta', metrics=['accuracy'])
+    model.fit(train_x, train_y, batch_size=BATCH_SIZE,
+              nb_epoch=EPOCH, verbose=1)
+
+    json_dict = model.to_json()
+    output_f = open('model.json', 'w')
+    json.dump(json_dict, output_f)
+
+    print(vocab_reverse)
+    dic_file = open('dict.json', 'w')
+    json.dump(vocab_reverse, dic_file)
+
+    model.save_weights('weights.h5')
+    from keras.backend.tensorflow_backend import clear_session
+    clear_session()
+    # from tensorflow import reset_default_graph
+    # reset_default_graph()
+
+
+if __name__ == '__main__':
+    char_lstm("test.txt")
+
+

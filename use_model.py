@@ -18,13 +18,16 @@ f.close()
 # 辞書の作成
 dictf = open('dict.json', 'r')
 dict_str = js.load(dictf)
-
-print(dict_str)
-
+dictf.close()
+# print(dict_str)
 inv_dict = {v:k for k, v in dict_str.items()}
 
-print("*********")
-print("len: ", len(dict_str), "len inv: ", len(inv_dict))
+# TIME_STEPの読み込み
+setting_f = open('settings.json', 'r')
+json = js.load(setting_f)
+TIME_STEP = json["TIME_STEP"]
+setting_f.close()
+
 
 while line:
     tmp = line.split(' ')
@@ -42,17 +45,17 @@ for i in range(200):
     input_data = in_csv[i]
     # print(input_data)
     output = ""
-    for x in input_data[0:min(len(input_data),4)]:
+    for x in input_data[0:min(len(input_data),TIME_STEP)]:
         output += dict_str[x]
     output += ":"
     for j in range(20):
         first = j
         # print(input_data[first:first+4])
         idata = []
-        if len(input_data[first:first+4]) < 4:
-            for x in range(4 - len(input_data[first:first+4])):
+        if len(input_data[first:first+TIME_STEP]) < TIME_STEP:
+            for x in range(TIME_STEP - len(input_data[first:first+TIME_STEP])):
                 input_data.append(0)
-        idata.append(input_data[first:first + 4])
+        idata.append(input_data[first:first + TIME_STEP])
         idata = np.array(idata)
         # print(idata.shape)
         idata = np.reshape(idata, (idata.shape[0], idata.shape[1], 1))

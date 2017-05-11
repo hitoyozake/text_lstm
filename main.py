@@ -162,16 +162,20 @@ def generate_train_xy(data, vocab, time_step=2):
         ty.append(tmp_y)
     return tx, ty
 
+def output_setting2json(epoch, timesteps):
+    f = open('settings.json', 'w')
+    settings = { "EPOCH": epoch, "TIME_STEP": timesteps }
+    json.dump(settings, f)
+
 
 def char_lstm(filename):
     BATCH_SIZE = 80
-    TIME_STEPS = 6
-    hidden_neurons = 256 #1024
+    TIME_STEPS = 16
+    hidden_neurons = 320#1024
     input_dim = 1
-    EPOCH=80
-
+    EPOCH=15
+    output_setting2json(EPOCH, TIME_STEPS)
     inputfile = open(filename, mode='r')
-
 
     strlist = []
     readlines = inputfile.readlines()
@@ -219,6 +223,10 @@ def char_lstm(filename):
     json_dict = model.to_json()
     output_f = open('model.json', 'w')
     json.dump(json_dict, output_f)
+
+    model.save_weights('weights.h5')
+    from keras.backend.tensorflow_backend import clear_session
+    clear_session()
 
 
 def string_lstm(csvfilename):

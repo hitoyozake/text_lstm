@@ -124,9 +124,18 @@ def make_train_data(filename):
         ty.append(tmp)
     return train_x, ty, vocab_dict, vocab_str_dict
 
-def lstm(data, dict):
-    print("lstm func")
-
+def load_settings(filename):
+    # import os
+    # os.path.exists(...)
+    try:
+        f = open(filename, 'r')
+        settings = json.load(f)
+    except IOError:
+        return
+    else:
+        # 例外が発生しなかったケース
+        f.close()
+        return settings
 
 def generate_xy(lines, vocab, time_step=2, train_rate = 0.8):
 
@@ -162,18 +171,36 @@ def generate_train_xy(data, vocab, time_step=2):
         ty.append(tmp_y)
     return tx, ty
 
-def output_setting2json(epoch, timesteps):
-    f = open('settings.json', 'w')
-    settings = { "EPOCH": epoch, "TIME_STEP": timesteps }
-    json.dump(settings, f)
-
+def output_setting2json(epoch, timesteps, batch_size = 64):
+    try:
+        f = open('settings.json', 'w')
+        settings = {"EPOCH": epoch, "TIME_STEP": timesteps, "BATCH_SIZE": batch_size}
+        json.dump(settings, f)
+    except IOError:
+        pass
 
 def char_lstm(filename):
-    BATCH_SIZE = 80
+    # デフォルト設定値
+    BATCH_SIZE = 64
     TIME_STEPS = 16
-    hidden_neurons = 320#1024
+    EPOCH = 32
+
+    batch_size = BATCH_SIZE
+    time_steps = TIME_STEPS
+    epoch = EPOCH
+
+    settings = load_settings('settings.json')
+
+    if settings is not None:
+        batch_size = settings['BATCH_SIZE'] if 'BATCH_SIZE' in settings else BATCH_SIZE
+        time_steps = settings['TIME_STEPS'] if 'TIME_STEPS' in settings else TIME_STEPS
+        epoch = settings['EPOCH'] if 'EPOCH' in settings else EPOCH
+    else:
+        print('not found settings.json, so use default values.')
+        print('[BATCH_SIZE=', BATCH_SIZE, ', TIME_STEPS=', TIME_STEPS, ', EPOCH=', EPOCH)
+
+    hidden_neurons = 320 #1024
     input_dim = 1
-    EPOCH=15
     output_setting2json(EPOCH, TIME_STEPS)
     inputfile = open(filename, mode='r')
 
@@ -186,7 +213,7 @@ def char_lstm(filename):
     vocab, reverse_dict = make_char_dictionary(strlist)
 
     # train_x, train_y, test_x, test_yの作成
-    train_x, train_y, test_x, test_y = generate_xy(strlist, vocab, time_step=TIME_STEPS, train_rate=0.7)
+    train_x, train_y, test_x, test_y = generate_xy(strlist, vocab, time_step=time_steps, train_rate=0.7)
     train_x = np.array(train_x)
     train_y = np.array(train_y)
     test_x = np.array(test_x)
@@ -205,7 +232,7 @@ def char_lstm(filename):
     '''
 
     model = Sequential()
-    model.add(LSTM(hidden_neurons, batch_input_shape=(None, TIME_STEPS, input_dim), return_sequences=False))
+    model.add(LSTM(hidden_neurons, batch_input_shape=(None, time_steps, input_dim), return_sequences=False))
     # model.add(Dense(output_neurons))
     model.add(Dense(256))
     model.add(Activation('relu'))
@@ -216,9 +243,8 @@ def char_lstm(filename):
     model.add(Activation('softmax'))
     model.compile(loss='categorical_crossentropy',
                   optimizer='adadelta', metrics=['accuracy'])
-    model.fit(train_x, train_y, batch_size=BATCH_SIZE,
-              nb_epoch=EPOCH, verbose=1)
-
+    model.fit(train_x, train_y, batch_size=batch_size,
+              nb_epoch=epoch, verbose=1)
 
     json_dict = model.to_json()
     output_f = open('model.json', 'w')
@@ -280,7 +306,15 @@ def string_lstm(csvfilename):
     # reset_default_graph()
 
 
+import sys
+
 if __name__ == '__main__':
+    args = sys.argv
+
+    if len(args) != 2:
+        print("error: arg1=<input.txt>")
+        sys.exit(1)
+
     char_lstm("test.txt")
 
 
